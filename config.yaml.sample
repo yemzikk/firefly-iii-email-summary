@@ -1,16 +1,61 @@
 ---
+# Firefly III Configuration
+firefly-url: 'https://your-firefly-instance.com'  # Your Firefly III URL (no trailing slash)
+accesstoken: 'YOUR_FIREFLY_API_TOKEN_HERE'  # Get this from Firefly III -> Options -> Profile -> OAuth -> Personal Access Tokens
+
+# Currency Settings
+currency: 'USD'  # Your currency code (USD, EUR, GBP, INR, etc.)
+currency_symbol: '$'  # Currency symbol to display in the report ($, €, £, ₹, etc.)
+
+# SMTP Email Configuration
 smtp:
-  server: smtp.hostname.tld
-  port: 25
-  starttls: False        # Use STARTTLS
-  authentication: False  # Login with (the following) username and password
-  user: username
-  password: password
+  server: smtp.gmail.com  # SMTP server address
+  port: 587  # SMTP port (587 for STARTTLS, 465 for SSL/TLS)
+  starttls: true  # Use STARTTLS (recommended for port 587)
+  authentication: true  # Enable SMTP authentication
+  user: your-email@gmail.com  # Your email address
+  password: 'your-app-password-here'  # App password or SMTP password
+
+# Email Settings
 email:
-  from: address@hostname.tld
+  from: your-email@gmail.com  # Sender email address
   to:
-    - secondaddress@hostname.tld
-    - thirdaddress@hostname.tld
-firefly-url: 'https://firefly.hostname.tld'
-accesstoken: 'verylongstringfromfireflysettings'
-# currency: 'USD'
+    - recipient1@example.com  # List of recipients
+    - recipient2@example.com
+
+# Optional: Custom email subject
+email_subject: 'Firefly III: Monthly Report'  # Default subject if not specified
+
+# Optional: Healthcheck URL (e.g., healthchecks.io)
+# Uncomment and set if you want to ping a healthcheck service after successful email
+# healthcheck_url: 'https://hc-ping.com/your-uuid-here'
+
+# ============================================================================
+# NOTES:
+# ============================================================================
+# 
+# 1. FIREFLY III API TOKEN:
+#    - Go to your Firefly III instance
+#    - Navigate to Options -> Profile -> OAuth
+#    - Create a new Personal Access Token
+#    - Copy the token and paste it above
+#
+# 2. GMAIL SETUP:
+#    - Enable 2-Factor Authentication on your Google account
+#    - Generate an App Password: https://myaccount.google.com/apppasswords
+#    - Use the app password in the 'password' field above
+#    - Port 587 with STARTTLS is recommended
+#
+# 3. OTHER SMTP PROVIDERS:
+#    - Outlook: smtp.office365.com, port 587
+#    - Yahoo: smtp.mail.yahoo.com, port 587
+#    - Custom: Check your provider's SMTP settings
+#
+# 4. SCHEDULING:
+#    - Add to crontab to run monthly:
+#      0 9 1 * * /usr/bin/python3 /path/to/monthly-report-template.py
+#    - This runs at 9 AM on the 1st of every month
+#
+# 5. CURRENCY SYMBOLS:
+#    Common symbols: $ (USD), € (EUR), £ (GBP), ₹ (INR), ¥ (JPY), 
+#                    $ (AUD/CAD), CHF, kr (SEK/NOK/DKK)
