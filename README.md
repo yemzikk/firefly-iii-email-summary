@@ -274,7 +274,7 @@ MIT License - Feel free to use and modify!
 
 ## Credits
 
-Created by the Firefly III community. Based on the original `firefly-iii-email-summary` project with enhanced design and features.
+Based on [David Schlachter’s firefly-iii-email-summary](https://github.com/davidschlachter/firefly-iii-email-summary), this community-enhanced version features a modern design, improved message formatting, and added budget summaries.
 
 ## Support
 
