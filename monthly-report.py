@@ -15,7 +15,8 @@ Requirements:
 Usage:
     1. Copy config-template.yaml to config.yaml
     2. Fill in your Firefly III URL, API token, and SMTP settings
-    3. Run: python3 monthly-report-template.py
+    3. Run: python3 monthly-report.py
+    4. Preview mode: python3 monthly-report.py --preview (generates preview.html)
 
 Author: Community contribution
 License: MIT
@@ -31,6 +32,7 @@ import bs4
 import ssl
 import smtplib
 import os
+import argparse
 
 from email.message import EmailMessage
 from email.headerregistry import Address
@@ -38,6 +40,15 @@ from email.utils import make_msgid
 
 
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Generate Firefly III monthly report")
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Generate preview.html instead of sending email",
+    )
+    args = parser.parse_args()
+
     # Get the directory where this script is located
     base_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(base_dir, "config.yaml")
@@ -383,9 +394,9 @@ def main():
         networth_class = "positive" if netWorth > 0 else "negative"
         # change hover effect for total row
         generalTableBody += (
-            '<tr class="total-row"><td><strong>Current net worth:</strong></td><td style="text-align: right;" class="amount '
+            '<tr class="total-row '
             + networth_class
-            + '"><strong>₹'
+            + '"><td><strong>Current net worth:</strong></td><td style="text-align: right;" class="amount"><strong>₹'
             + str(round(netWorth)).replace("-", "-")
             + "</strong></td></tr>"
         )
@@ -515,14 +526,25 @@ def main():
 						font-weight: 600;
 					}}
 					.total-row {{
-						background-color: #667eea;
 						color: white;
 						font-weight: 700;
 						font-size: 17px;
 					}}
+					.total-row.positive {{
+						background-color: #28a745;
+					}}
+					.total-row.negative {{
+						background-color: #dc3545;
+					}}
+					.total-row:hover {{
+						opacity: 0.95;
+					}}
 					.total-row td {{
 						padding: 16px 12px;
 						border-bottom: none;
+					}}
+					.total-row .amount {{
+						color: white !important;
 					}}
 					.footer {{
 						text-align: center;
@@ -593,6 +615,30 @@ def main():
             bs4.BeautifulSoup(htmlBody, "html.parser").get_text()
         )  # just html to text
         msg.add_alternative(htmlBody, subtype="html")
+        #
+        # Check if we're in preview mode
+        if args.preview:
+            # Generate preview.html file
+            preview_path = os.path.join(base_dir, "preview.html")
+            # Create a standalone HTML document
+            preview_html = """<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Firefly III Monthly Report - Preview</title>
+	</head>
+	{body}
+</html>""".format(
+                body=htmlBody
+            )
+
+            with open(preview_path, "w", encoding="utf-8") as f:
+                f.write(preview_html)
+
+            print(f"✅ Preview generated: {preview_path}")
+            print(f"   Open in browser: file://{preview_path}")
+            return
         #
         # Set up the SSL context for SMTP if necessary
         context = ssl.create_default_context()

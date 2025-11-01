@@ -113,12 +113,34 @@ smtp:
 
 ## Usage
 
-### Manual Execution
+### Preview Mode (Testing without Sending Email)
 
-Run the script manually:
+Before sending emails, you can generate a preview HTML file to see exactly how your report will look:
 
 ```bash
-python3 monthly-report-template.py
+python3 monthly-report.py --preview
+```
+
+This will:
+
+- Fetch all data from your Firefly III instance
+- Generate `preview.html` in the same directory
+- **NOT** send any email
+- Display the file path so you can open it in your browser
+
+Perfect for:
+
+- Testing your configuration
+- Checking the report appearance
+- Verifying data accuracy
+- Making styling changes
+
+### Manual Execution
+
+Run the script manually to send the email:
+
+```bash
+python3 monthly-report.py
 ```
 
 This will generate a report for the previous month and send it via email.
