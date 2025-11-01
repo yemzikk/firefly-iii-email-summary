@@ -256,7 +256,7 @@ def main():
                 + '</td><td style="text-align: right;" class="amount '
                 + color_class
                 + '">' + currencySymbol
-                + str(round(total)).replace("-", "−")
+                + str(round(total)).replace("-", "-")
                 + "</td></tr>"
             )
 
@@ -292,13 +292,13 @@ def main():
                     "<tr><td>"
                     + budget["name"]
                     + '</td><td style="text-align: right;" class="amount">' + currencySymbol
-                    + str(round(float(budget["limit"]))).replace("-", "−")
+                    + str(round(float(budget["limit"]))).replace("-", "-")
                     + '</td><td style="text-align: right;" class="amount negative">' + currencySymbol
-                    + str(round(abs(float(budget["spent"])))).replace("-", "−")
+                    + str(round(abs(float(budget["spent"])))).replace("-", "-")
                     + '</td><td style="text-align: right;" class="amount '
                     + remaining_class
                     + '">' + currencySymbol
-                    + str(round(remaining)).replace("-", "−")
+                    + str(round(remaining)).replace("-", "-")
                     + "</td></tr>"
                 )
 
@@ -311,9 +311,9 @@ def main():
                     '<tr class="zero"><td>'
                     + zeroNames
                     + '</td><td style="text-align: right;" class="amount">' + currencySymbol
-                    + str(round(totalZeroLimit)).replace("-", "−")
+                    + str(round(totalZeroLimit)).replace("-", "-")
                     + '</td><td style="text-align: right;" class="amount">' + currencySymbol + '0</td><td style="text-align: right;" class="amount">' + currencySymbol
-                    + str(round(totalZeroLimit)).replace("-", "−")
+                    + str(round(totalZeroLimit)).replace("-", "-")
                     + "</td></tr>"
                 )
 
@@ -324,12 +324,12 @@ def main():
         generalTableBody = "<table>"
         generalTableBody += (
             '<tr><td>Spent this month:</td><td style="text-align: right;" class="amount negative">' + currencySymbol
-            + str(round(abs(spentThisMonth))).replace("-", "−")
+            + str(round(abs(spentThisMonth))).replace("-", "-")
             + "</td></tr>"
         )
         generalTableBody += (
             '<tr><td>Earned this month:</td><td style="text-align: right;" class="amount positive">' + currencySymbol
-            + str(round(earnedThisMonth)).replace("-", "−")
+            + str(round(earnedThisMonth)).replace("-", "-")
             + "</td></tr>"
         )
         net_class = "positive" if netChangeThisMonth > 0 else "negative"
@@ -337,17 +337,17 @@ def main():
             '<tr class="summary-row"><td><strong>Net change this month:</strong></td><td style="text-align: right;" class="amount '
             + net_class
             + '"><strong>' + currencySymbol
-            + str(round(netChangeThisMonth)).replace("-", "−")
+            + str(round(netChangeThisMonth)).replace("-", "-")
             + "</strong></td></tr>"
         )
         generalTableBody += (
             '<tr><td>Spent so far this year:</td><td style="text-align: right;" class="amount negative">' + currencySymbol
-            + str(round(abs(spentThisYear))).replace("-", "−")
+            + str(round(abs(spentThisYear))).replace("-", "-")
             + "</td></tr>"
         )
         generalTableBody += (
             '<tr><td>Earned so far this year:</td><td style="text-align: right;" class="amount positive">' + currencySymbol
-            + str(round(earnedThisYear)).replace("-", "−")
+            + str(round(earnedThisYear)).replace("-", "-")
             + "</td></tr>"
         )
         net_year_class = "positive" if netChangeThisYear > 0 else "negative"
@@ -355,13 +355,13 @@ def main():
             '<tr class="summary-row"><td><strong>Net change so far this year:</strong></td><td style="text-align: right;" class="amount '
             + net_year_class
             + '"><strong>' + currencySymbol
-            + str(round(netChangeThisYear)).replace("-", "−")
+            + str(round(netChangeThisYear)).replace("-", "-")
             + "</strong></td></tr>"
         )
         networth_class = "positive" if netWorth > 0 else "negative"
         generalTableBody += (
-            '<tr class="total-row"><td><strong>Current net worth:</strong></td><td style="text-align: right;" class="amount"><strong>' + currencySymbol
-            + str(round(netWorth)).replace("-", "−")
+            '<tr class="total-row"><td><strong>Current net worth:</strong></td><td style="text-align: right;" class="amount ' + net_year_class + '"><strong>' + currencySymbol
+            + str(round(netWorth)).replace("-", "-")
             + "</strong></td></tr>"
         )
         generalTableBody += "</table>"
