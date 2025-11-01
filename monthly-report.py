@@ -30,6 +30,7 @@ import re
 import bs4
 import ssl
 import smtplib
+import os
 
 from email.message import EmailMessage
 from email.headerregistry import Address
@@ -37,36 +38,39 @@ from email.utils import make_msgid
 
 
 def main():
-    #
-    # Load configuration
+    # Get the directory where this script is located
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, "config.yaml")
+
+    # Load configuration safely
     try:
-        with open("config.yaml", "r") as configFile:
+        with open(config_path, "r") as configFile:
             config = yaml.safe_load(configFile)
-    except FileNotFoundError:
-        print("ERROR: config.yaml not found!")
-        print("Please copy config-template.yaml to config.yaml and fill in your details.")
+    except Exception:
+        traceback.print_exc()
+        print(f"ERROR: could not load config.yaml from {config_path}")
         sys.exit(1)
     except Exception as e:
         traceback.print_exc()
         print("ERROR: could not load config.yaml")
         sys.exit(1)
-    
+
     # Validate required configuration
-    required_fields = ['firefly-url', 'accesstoken', 'smtp', 'email']
+    required_fields = ["firefly-url", "accesstoken", "smtp", "email"]
     for field in required_fields:
         if field not in config:
             print(f"ERROR: Missing required field '{field}' in config.yaml")
             sys.exit(1)
-    
+
     #
     # Determine the applicable date range: the previous month
     today = datetime.date.today()
     endDate = today.replace(day=1) - datetime.timedelta(days=1)
     startDate = endDate.replace(day=1)
     monthName = startDate.strftime("%B")
-    
+
     print(f"Generating report for {monthName} {startDate.strftime('%Y')}...")
-    
+
     #
     # Set us up for API requests
     HEADERS = {
@@ -75,17 +79,19 @@ def main():
     }
     with requests.Session() as s:
         s.headers.update(HEADERS)
-        
+
         # Test API connection
         try:
             test_response = s.get(config["firefly-url"] + "/api/v1/about")
             if test_response.status_code != 200:
-                print(f"ERROR: Cannot connect to Firefly III API. Status code: {test_response.status_code}")
+                print(
+                    f"ERROR: Cannot connect to Firefly III API. Status code: {test_response.status_code}"
+                )
                 sys.exit(1)
         except Exception as e:
             print(f"ERROR: Cannot reach Firefly III instance: {e}")
             sys.exit(1)
-        
+
         #
         # Get all the categories
         print("Fetching categories...")
@@ -204,14 +210,14 @@ def main():
         ).json()
         currency = config.get("currency", None)
         currencySymbol = config.get("currency_symbol", "$")  # Default to $
-        
+
         if currency:
             currencyName = currency
         else:
             for key in monthSummary:
                 if re.match(r"spent-in-.*", key):
                     currencyName = key.replace("spent-in-", "")
-        
+
         spentThisMonth = float(
             monthSummary["spent-in-" + currencyName]["monetary_value"]
         )
@@ -255,7 +261,8 @@ def main():
                 + category["name"]
                 + '</td><td style="text-align: right;" class="amount '
                 + color_class
-                + '">' + currencySymbol
+                + '">'
+                + currencySymbol
                 + str(round(total)).replace("-", "-")
                 + "</td></tr>"
             )
@@ -266,7 +273,9 @@ def main():
             categoriesTableBody += (
                 '<tr class="zero"><td>'
                 + zeroNames
-                + '</td><td style="text-align: right;" class="amount">' + currencySymbol + '0</td></tr>'
+                + '</td><td style="text-align: right;" class="amount">'
+                + currencySymbol
+                + "0</td></tr>"
             )
 
         categoriesTableBody += "</table>"
@@ -291,13 +300,16 @@ def main():
                 budgetsTableBody += (
                     "<tr><td>"
                     + budget["name"]
-                    + '</td><td style="text-align: right;" class="amount">' + currencySymbol
+                    + '</td><td style="text-align: right;" class="amount">'
+                    + currencySymbol
                     + str(round(float(budget["limit"]))).replace("-", "-")
-                    + '</td><td style="text-align: right;" class="amount negative">' + currencySymbol
+                    + '</td><td style="text-align: right;" class="amount negative">'
+                    + currencySymbol
                     + str(round(abs(float(budget["spent"])))).replace("-", "-")
                     + '</td><td style="text-align: right;" class="amount '
                     + remaining_class
-                    + '">' + currencySymbol
+                    + '">'
+                    + currencySymbol
                     + str(round(remaining)).replace("-", "-")
                     + "</td></tr>"
                 )
@@ -310,9 +322,13 @@ def main():
                 budgetsTableBody += (
                     '<tr class="zero"><td>'
                     + zeroNames
-                    + '</td><td style="text-align: right;" class="amount">' + currencySymbol
+                    + '</td><td style="text-align: right;" class="amount">'
+                    + currencySymbol
                     + str(round(totalZeroLimit)).replace("-", "-")
-                    + '</td><td style="text-align: right;" class="amount">' + currencySymbol + '0</td><td style="text-align: right;" class="amount">' + currencySymbol
+                    + '</td><td style="text-align: right;" class="amount">'
+                    + currencySymbol
+                    + '0</td><td style="text-align: right;" class="amount">'
+                    + currencySymbol
                     + str(round(totalZeroLimit)).replace("-", "-")
                     + "</td></tr>"
                 )
@@ -323,12 +339,14 @@ def main():
         print("Building financial overview...")
         generalTableBody = "<table>"
         generalTableBody += (
-            '<tr><td>Spent this month:</td><td style="text-align: right;" class="amount negative">' + currencySymbol
+            '<tr><td>Spent this month:</td><td style="text-align: right;" class="amount negative">'
+            + currencySymbol
             + str(round(abs(spentThisMonth))).replace("-", "-")
             + "</td></tr>"
         )
         generalTableBody += (
-            '<tr><td>Earned this month:</td><td style="text-align: right;" class="amount positive">' + currencySymbol
+            '<tr><td>Earned this month:</td><td style="text-align: right;" class="amount positive">'
+            + currencySymbol
             + str(round(earnedThisMonth)).replace("-", "-")
             + "</td></tr>"
         )
@@ -336,17 +354,20 @@ def main():
         generalTableBody += (
             '<tr class="summary-row"><td><strong>Net change this month:</strong></td><td style="text-align: right;" class="amount '
             + net_class
-            + '"><strong>' + currencySymbol
+            + '"><strong>'
+            + currencySymbol
             + str(round(netChangeThisMonth)).replace("-", "-")
             + "</strong></td></tr>"
         )
         generalTableBody += (
-            '<tr><td>Spent so far this year:</td><td style="text-align: right;" class="amount negative">' + currencySymbol
+            '<tr><td>Spent so far this year:</td><td style="text-align: right;" class="amount negative">'
+            + currencySymbol
             + str(round(abs(spentThisYear))).replace("-", "-")
             + "</td></tr>"
         )
         generalTableBody += (
-            '<tr><td>Earned so far this year:</td><td style="text-align: right;" class="amount positive">' + currencySymbol
+            '<tr><td>Earned so far this year:</td><td style="text-align: right;" class="amount positive">'
+            + currencySymbol
             + str(round(earnedThisYear)).replace("-", "-")
             + "</td></tr>"
         )
@@ -354,13 +375,17 @@ def main():
         generalTableBody += (
             '<tr class="summary-row"><td><strong>Net change so far this year:</strong></td><td style="text-align: right;" class="amount '
             + net_year_class
-            + '"><strong>' + currencySymbol
+            + '"><strong>'
+            + currencySymbol
             + str(round(netChangeThisYear)).replace("-", "-")
             + "</strong></td></tr>"
         )
         networth_class = "positive" if netWorth > 0 else "negative"
+        # change hover effect for total row
         generalTableBody += (
-            '<tr class="total-row"><td><strong>Current net worth:</strong></td><td style="text-align: right;" class="amount ' + net_year_class + '"><strong>' + currencySymbol
+            '<tr class="total-row"><td><strong>Current net worth:</strong></td><td style="text-align: right;" class="amount '
+            + networth_class
+            + '"><strong>₹'
             + str(round(netWorth)).replace("-", "-")
             + "</strong></td></tr>"
         )
@@ -464,6 +489,9 @@ def main():
 					}}
 					tr:hover {{
 						background-color: #f8f9fa;
+					}}
+					.total-row:hover {{
+						background-color: #667eea;
 					}}
 					.amount {{
 						font-weight: 600;
@@ -599,7 +627,7 @@ def main():
                         sys.exit(3)
                 s.send_message(msg)
                 print("✅ Email sent successfully!")
-                
+
             # Optional: Ping healthcheck URL if configured
             if "healthcheck_url" in config and config["healthcheck_url"]:
                 print("Pinging healthcheck...")
