@@ -396,7 +396,8 @@ def main():
         generalTableBody += (
             '<tr class="total-row '
             + networth_class
-            + '"><td><strong>Current net worth:</strong></td><td style="text-align: right;" class="amount"><strong>₹'
+            + '"><td><strong>Current net worth:</strong></td><td style="text-align: right;" class="amount"><strong>'
+			+ currencySymbol
             + str(round(netWorth)).replace("-", "-")
             + "</strong></td></tr>"
         )
