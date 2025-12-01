@@ -33,6 +33,9 @@ import ssl
 import smtplib
 import os
 import argparse
+import json
+import plotly.graph_objects as go
+from email.mime.image import MIMEImage
 
 from email.message import EmailMessage
 from email.headerregistry import Address
@@ -595,9 +598,102 @@ def main():
                 }
             )
 
-        # Convert to JSON for JavaScript
-        import json
+        # Generate Sankey chart as static image using Plotly
+        print("Generating Sankey chart image...")
+        sankey_image_path = os.path.join(base_dir, "sankey_chart.png")
 
+        # Prepare data for Plotly Sankey
+        node_labels = [node["label"] for node in sankeyNodes]
+        link_sources = [link["source"] for link in sankeyLinks]
+        link_targets = [link["target"] for link in sankeyLinks]
+        link_values = [link["value"] for link in sankeyLinks]
+
+        # Define colors for nodes
+        node_colors = []
+        for node in sankeyNodes:
+            node_id = node["id"]
+            if node_id.startswith("revenue_"):
+                node_colors.append("rgba(27, 94, 32, 0.8)")  # Dark green for revenue
+            elif node_id.startswith("income_cat_"):
+                node_colors.append(
+                    "rgba(76, 175, 80, 0.8)"
+                )  # Light green for income categories
+            elif node_id == "income_hub":
+                node_colors.append("rgba(102, 126, 234, 0.8)")  # Blue for income hub
+            elif node_id.startswith("budget_"):
+                node_colors.append("rgba(156, 39, 176, 0.8)")  # Purple for budgets
+            elif node_id == "net_savings":
+                node_colors.append("rgba(40, 167, 69, 0.8)")  # Green for savings
+            else:  # categories
+                node_colors.append(
+                    "rgba(220, 53, 69, 0.8)"
+                )  # Red for expense categories
+
+        # Define colors for links
+        link_colors = []
+        for i, link in enumerate(sankeyLinks):
+            source_node = sankeyNodes[link["source"]]
+            target_node = sankeyNodes[link["target"]]
+
+            # Color based on flow type
+            if target_node["id"] == "income_hub":
+                link_colors.append("rgba(76, 175, 80, 0.4)")  # Income flow
+            elif target_node["id"] == "net_savings":
+                link_colors.append("rgba(40, 167, 69, 0.4)")  # Savings flow
+            elif source_node["id"] == "income_hub" and target_node["id"].startswith(
+                "budget_"
+            ):
+                link_colors.append("rgba(156, 39, 176, 0.4)")  # Income to budgets
+            elif source_node["id"].startswith("budget_"):
+                link_colors.append("rgba(220, 53, 69, 0.4)")  # Budget to expenses
+            else:
+                link_colors.append("rgba(27, 94, 32, 0.4)")  # Revenue sources
+
+        # Create Plotly Sankey diagram
+        fig = go.Figure(
+            data=[
+                go.Sankey(
+                    node=dict(
+                        pad=15,
+                        thickness=20,
+                        line=dict(color="white", width=2),
+                        label=node_labels,
+                        color=node_colors,
+                    ),
+                    link=dict(
+                        source=link_sources,
+                        target=link_targets,
+                        value=link_values,
+                        color=link_colors,
+                    ),
+                )
+            ]
+        )
+
+        fig.update_layout(
+            title=dict(
+                text=f"Money Flow - {monthName} {startDate.strftime('%Y')}",
+                font=dict(size=20, family="Inter, Arial", color="#1a1a1a"),
+            ),
+            font=dict(size=12, family="Inter, Arial"),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            height=600,
+            margin=dict(l=10, r=10, t=50, b=10),
+        )
+
+        # Save as PNG
+        try:
+            fig.write_image(
+                sankey_image_path, format="png", width=800, height=600, scale=2
+            )
+            print(f"✅ Sankey chart saved: {sankey_image_path}")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not generate Sankey chart image: {e}")
+            print("   Continuing without Sankey chart...")
+            sankey_image_path = None
+
+        # For preview mode, keep the JSON data for interactive chart
         sankeyData = json.dumps({"nodes": sankeyNodes, "links": sankeyLinks})
         #
         # Assemble the email
@@ -606,6 +702,9 @@ def main():
         msg["Subject"] = config.get("email_subject", "Firefly III: Monthly report")
         msg["From"] = config["email"]["from"]
         msg["To"] = tuple(config["email"]["to"])
+
+        # Create a unique content ID for the Sankey image
+        sankey_cid = make_msgid(domain="firefly-report")
 
         # Build the HTML body with budgets section
         budgetSection = ""
@@ -798,9 +897,7 @@ def main():
 				</div>
 				<div class="section">
 					<h3>💸 Money Flow</h3>
-					<div style="position: relative; height: 500px;">
-						<canvas id="sankeyChart"></canvas>
-					</div>
+					{sankeySection}
 				</div>
 				{budgetSection}
 				<div class="section">
@@ -810,92 +907,128 @@ def main():
 				<div class="footer">
 					Generated by <a href="https://github.com/yemzikk/firefly-iii-email-summary" style="color: #999;">Firefly III Email Summary</a> • <a href="https://yemzikk.in" style="color: #999; text-decoration: none;">Yemzikk</a>
 				</div>
-				<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-				<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.0/dist/chartjs-chart-sankey.min.js"></script>
-				<script>
-					const sankeyData = {sankeyData};
-					const ctx = document.getElementById('sankeyChart');
-					
-					// Transform data for Chart.js Sankey
-					const data = {{
-						datasets: [{{
-							data: sankeyData.links.map(link => ({{
-								from: sankeyData.nodes[link.source].label,
-								to: sankeyData.nodes[link.target].label,
-								flow: link.value
-							}})),
-							colorFrom: (c) => {{
-								const fromLabel = c.dataset.data[c.dataIndex].from;
-								const toLabel = c.dataset.data[c.dataIndex].to;
-								// Revenue accounts (Level 1 - dark green)
-								if (toLabel !== 'Total Income' && fromLabel !== 'Total Income') return 'rgba(27, 94, 32, 0.7)';
-								// Income categories (Level 2 - light green)
-								if (toLabel === 'Total Income') return 'rgba(76, 175, 80, 0.7)';
-								// Income hub (Level 3 - blue)
-								if (fromLabel === 'Total Income') return 'rgba(102, 126, 234, 0.7)';
-								// Budgets (Level 4 - purple)
-								return 'rgba(156, 39, 176, 0.7)';
-							}},
-							colorTo: (c) => {{
-								const toLabel = c.dataset.data[c.dataIndex].to;
-								const fromLabel = c.dataset.data[c.dataIndex].from;
-								// Surplus Savings (green)
-								if (toLabel === 'Savings' || toLabel === 'Net Savings') return 'rgba(40, 167, 69, 0.7)';
-								// Income categories (light green)
-								if (toLabel !== 'Total Income' && fromLabel !== 'Total Income') return 'rgba(76, 175, 80, 0.7)';
-								// Income hub (blue)
-								if (toLabel === 'Total Income') return 'rgba(102, 126, 234, 0.7)';
-								// Budgets (purple)
-								if (fromLabel === 'Total Income' && toLabel !== 'Savings' && toLabel !== 'Net Savings') return 'rgba(156, 39, 176, 0.7)';
-								// Categories (red)
-								return 'rgba(220, 53, 69, 0.7)';
-							}},
-							borderWidth: 0,
-							nodeWidth: 10,
-							size: 'max'
-						}}]
-					}};
-					
-					new Chart(ctx, {{
-						type: 'sankey',
-						data: data,
-						options: {{
-							responsive: true,
-							maintainAspectRatio: false,
-							plugins: {{
-								legend: {{
-									display: false
-								}},
-								tooltip: {{
-									callbacks: {{
-										label: function(context) {{
-											const item = context.dataset.data[context.dataIndex];
-											const totalIncome = {totalIncome};
-											const percentage = ((item.flow / totalIncome) * 100).toFixed(1);
-											return item.from + ' → ' + item.to + ': {currencySymbol}' + Math.round(item.flow).toLocaleString() + ' (' + percentage + '%)';
-										}}
-									}}
-								}}
-							}}
-						}}
-					}});
-				</script>
-			</body>
-		</html>
-		""".format(
+		"""
+
+        # Format the HTML body first (without sankey section)
+        htmlBody = htmlBody.format(
             monthName=monthName,
             year=startDate.strftime("%Y"),
             categoriesTableBody=categoriesTableBody,
             budgetSection=budgetSection,
             generalTableBody=generalTableBody,
-            sankeyData=sankeyData,
-            currencySymbol=currencySymbol,
-            totalIncome=earnedThisMonth,
+            sankeySection="{sankeySection}",  # Placeholder
         )
+
+        # Determine Sankey section content based on preview mode
+        if args.preview:
+            # For preview, use interactive JavaScript chart
+            sankeySection = """<div style="position: relative; height: 500px;">
+                        <canvas id="sankeyChart"></canvas>
+                    </div>"""
+            # Add the JavaScript for preview
+            javascript_code = f"""
+                <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.0/dist/chartjs-chart-sankey.min.js"></script>
+                <script>
+                    const sankeyData = {sankeyData};
+                    const ctx = document.getElementById('sankeyChart');
+					
+                    // Transform data for Chart.js Sankey
+                    const data = {{
+                        datasets: [{{
+                            data: sankeyData.links.map(link => ({{
+                                from: sankeyData.nodes[link.source].label,
+                                to: sankeyData.nodes[link.target].label,
+                                flow: link.value
+                            }})),
+                            colorFrom: (c) => {{
+                                const fromLabel = c.dataset.data[c.dataIndex].from;
+                                const toLabel = c.dataset.data[c.dataIndex].to;
+                                // Revenue accounts (Level 1 - dark green)
+                                if (toLabel !== 'Total Income' && fromLabel !== 'Total Income') return 'rgba(27, 94, 32, 0.7)';
+                                // Income categories (Level 2 - light green)
+                                if (toLabel === 'Total Income') return 'rgba(76, 175, 80, 0.7)';
+                                // Income hub (Level 3 - blue)
+                                if (fromLabel === 'Total Income') return 'rgba(102, 126, 234, 0.7)';
+                                // Budgets (Level 4 - purple)
+                                return 'rgba(156, 39, 176, 0.7)';
+                            }},
+                            colorTo: (c) => {{
+                                const toLabel = c.dataset.data[c.dataIndex].to;
+                                const fromLabel = c.dataset.data[c.dataIndex].from;
+                                // Surplus Savings (green)
+                                if (toLabel === 'Savings' || toLabel === 'Net Savings') return 'rgba(40, 167, 69, 0.7)';
+                                // Income categories (light green)
+                                if (toLabel !== 'Total Income' && fromLabel !== 'Total Income') return 'rgba(76, 175, 80, 0.7)';
+                                // Income hub (blue)
+                                if (toLabel === 'Total Income') return 'rgba(102, 126, 234, 0.7)';
+                                // Budgets (purple)
+                                if (fromLabel === 'Total Income' && toLabel !== 'Savings' && toLabel !== 'Net Savings') return 'rgba(156, 39, 176, 0.7)';
+                                // Categories (red)
+                                return 'rgba(220, 53, 69, 0.7)';
+                            }},
+                            borderWidth: 0,
+                            nodeWidth: 10,
+                            size: 'max'
+                        }}]
+                    }};
+					
+                    new Chart(ctx, {{
+                        type: 'sankey',
+                        data: data,
+                        options: {{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {{
+                                legend: {{
+                                    display: false
+                                }},
+                                tooltip: {{
+                                    callbacks: {{
+                                        label: function(context) {{
+                                            const item = context.dataset.data[context.dataIndex];
+                                            const totalIncome = {earnedThisMonth};
+                                            const percentage = ((item.flow / totalIncome) * 100).toFixed(1);
+                                            return item.from + ' → ' + item.to + ': {currencySymbol}' + Math.round(item.flow).toLocaleString() + ' (' + percentage + '%)';
+                                        }}
+                                    }}
+                                }}
+                            }}
+                        }}
+                    }});
+                </script>
+            </body>
+        </html>
+        """
+            htmlBody = (
+                htmlBody.replace("{sankeySection}", sankeySection) + javascript_code
+            )
+        else:
+            # For email, use embedded static image
+            if sankey_image_path and os.path.exists(sankey_image_path):
+                sankeySection = f'<img src="cid:{sankey_cid[1:-1]}" alt="Money Flow Chart" style="width: 100%; max-width: 800px; height: auto; border-radius: 8px;" />'
+            else:
+                sankeySection = '<p style="text-align: center; color: #999; padding: 40px;">Sankey chart could not be generated</p>'
+            htmlBody = (
+                htmlBody.replace("{sankeySection}", sankeySection)
+                + """
+            </body>
+        </html>
+        """
+            )
         msg.set_content(
             bs4.BeautifulSoup(htmlBody, "html.parser").get_text()
         )  # just html to text
         msg.add_alternative(htmlBody, subtype="html")
+
+        # Attach Sankey chart image for email mode
+        if not args.preview and sankey_image_path and os.path.exists(sankey_image_path):
+            with open(sankey_image_path, "rb") as img_file:
+                img_data = img_file.read()
+                msg.get_payload()[1].add_related(
+                    img_data, maintype="image", subtype="png", cid=sankey_cid
+                )
+            print("✅ Sankey chart image attached to email")
         #
         # Check if we're in preview mode
         if args.preview:
