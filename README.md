@@ -18,6 +18,7 @@ Beautiful HTML email reports for your Firefly III personal finance manager.
 - **Category Summary**: All your transaction categories sorted by spending
 - **Budget Tracking**: Budget limits, spending, and remaining amounts
 - **Financial Overview**: Monthly and yearly summaries, net worth
+- **Money Flow Sankey**: Visual flow from income sources → total income hub → budgets → expense categories (plus savings)
 
 💰 **Smart Features**
 
@@ -25,6 +26,7 @@ Beautiful HTML email reports for your Firefly III personal finance manager.
 - Sorted by spending amount (highest first)
 - Currency symbol support (₹, $, €, £, etc.)
 - No line-breaking between currency symbols and amounts
+- Interactive Sankey diagram tooltips with proportional percentages of total income
 
 🔔 **Optional Healthcheck Integration**
 

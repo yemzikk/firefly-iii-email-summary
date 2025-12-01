@@ -193,6 +193,9 @@ def main():
                 )  # spent is negative
                 budgetTotals.append(
                     {
+                        "id": budget[
+                            "id"
+                        ],  # keep Firefly budget id for later transaction mapping
                         "name": budgetName,
                         "limit": budgetLimit,
                         "spent": budgetSpent,
@@ -402,6 +405,201 @@ def main():
         )
         generalTableBody += "</table>"
         #
+        # Build Sankey chart data - Income → Budgets → Categories
+        print("Building Sankey chart data...")
+
+        # Fetch revenue accounts to categorize income
+        print("Fetching revenue accounts...")
+        revenue_accounts_url = config["firefly-url"] + "/api/v1/accounts?type=revenue"
+        revenue_accounts = s.get(revenue_accounts_url).json()
+
+        # Fetch income transactions to map accounts to categories
+        print("Fetching income transactions...")
+        income_trans_url = (
+            config["firefly-url"]
+            + "/api/v1/transactions?start="
+            + startDate.strftime("%Y-%m-%d")
+            + "&end="
+            + endDate.strftime("%Y-%m-%d")
+            + "&type=deposit"
+        )
+        income_transactions = s.get(income_trans_url).json()
+
+        # Build revenue account to category mapping with amounts
+        revenue_to_category = {}  # revenue_account -> {category: amount}
+
+        for trans in income_transactions.get("data", []):
+            for t in trans["attributes"]["transactions"]:
+                amount = abs(float(t["amount"]))
+                source_name = t.get("source_name", "Other Income")
+                category = t.get("category_name") or ""
+
+                if source_name not in revenue_to_category:
+                    revenue_to_category[source_name] = {}
+                revenue_to_category[source_name][category] = (
+                    revenue_to_category[source_name].get(category, 0) + amount
+                )
+
+        sankeyNodes = []
+        sankeyLinks = []
+        nodeIndex = 0
+
+        # Separate expense categories
+        expenseCategories = [c for c in totals if float(c["total"]) < 0]
+
+        # Level 1: Revenue accounts (income sources)
+        revenue_indices = {}
+        for revenue_account in revenue_to_category.keys():
+            revenue_indices[revenue_account] = nodeIndex
+            sankeyNodes.append(
+                {"id": f"revenue_{revenue_account}", "label": revenue_account}
+            )
+            nodeIndex += 1
+
+        # Level 2: Income categories
+        income_category_indices = {}
+        all_income_categories = set()
+        for revenue_cats in revenue_to_category.values():
+            all_income_categories.update(revenue_cats.keys())
+
+        for income_cat in all_income_categories:
+            income_category_indices[income_cat] = nodeIndex
+            sankeyNodes.append({"id": f"income_cat_{income_cat}", "label": income_cat})
+            nodeIndex += 1
+
+        # Level 3: Income hub
+        income_hub_index = nodeIndex
+        sankeyNodes.append({"id": "income_hub", "label": "Total Income"})
+        nodeIndex += 1
+
+        # Level 4: Budgets (from budgetTotals)
+        budget_indices = {}
+        for budget in budgetTotals:
+            if float(budget["spent"]) != 0:
+                budget_indices[budget["name"]] = nodeIndex
+                sankeyNodes.append(
+                    {"id": f"budget_{budget['name']}", "label": budget["name"]}
+                )
+                nodeIndex += 1
+
+        # Level 5: Expense categories
+        category_indices = {}
+        for cat in expenseCategories:
+            category_indices[cat["name"]] = nodeIndex
+            sankeyNodes.append({"id": f"category_{cat['name']}", "label": cat["name"]})
+            nodeIndex += 1
+
+        # Add surplus savings node if positive; avoid label collision with existing 'Savings' budget
+        savings_index = None
+        if netChangeThisMonth > 0:
+            existing_budget_names_lower = {b["name"].lower() for b in budgetTotals}
+            surplus_label = (
+                "Savings"
+                if "savings" not in existing_budget_names_lower
+                else "Net Savings"
+            )
+            savings_index = nodeIndex
+            sankeyNodes.append({"id": "net_savings", "label": surplus_label})
+            nodeIndex += 1
+
+        # Create links: Revenue accounts → Income categories
+        for revenue_account, categories in revenue_to_category.items():
+            for category, amount in categories.items():
+                sankeyLinks.append(
+                    {
+                        "source": revenue_indices[revenue_account],
+                        "target": income_category_indices[category],
+                        "value": amount,
+                    }
+                )
+
+        # Create links: Income categories → Income hub
+        for income_cat in all_income_categories:
+            total_for_cat = sum(
+                cats.get(income_cat, 0) for cats in revenue_to_category.values()
+            )
+            if total_for_cat > 0:
+                sankeyLinks.append(
+                    {
+                        "source": income_category_indices[income_cat],
+                        "target": income_hub_index,
+                        "value": total_for_cat,
+                    }
+                )
+
+        # Create links: Income hub → Budgets
+        for budget in budgetTotals:
+            if float(budget["spent"]) != 0:
+                sankeyLinks.append(
+                    {
+                        "source": income_hub_index,
+                        "target": budget_indices[budget["name"]],
+                        "value": abs(float(budget["spent"])),
+                    }
+                )
+
+        # Build actual budget -> category expense mapping using budget transactions
+        print("Fetching budget transactions for category mapping...")
+        budget_category_map = {}  # budget_name -> {category_name: amount}
+        for b in budgetTotals:
+            b_id = b["id"]
+            # Firefly API: budgets/{id}/transactions with date range
+            b_tx_url = (
+                f"{config['firefly-url']}/api/v1/budgets/{b_id}/transactions?start="
+                + startDate.strftime("%Y-%m-%d")
+                + "&end="
+                + endDate.strftime("%Y-%m-%d")
+            )
+            try:
+                b_tx_resp = s.get(b_tx_url).json()
+            except Exception:
+                continue  # skip on error
+            for entry in b_tx_resp.get("data", []):
+                for t in entry.get("attributes", {}).get("transactions", []):
+                    try:
+                        amt = float(t.get("amount", 0))
+                    except (ValueError, TypeError):
+                        amt = 0
+                    # We only consider negative amounts as expenses flowing out of the budget
+                    if amt >= 0:
+                        continue
+                    cat_name = t.get("category_name") or "Uncategorized"
+                    budget_name = b["name"]
+                    if budget_name not in budget_category_map:
+                        budget_category_map[budget_name] = {}
+                    budget_category_map[budget_name][cat_name] = budget_category_map[
+                        budget_name
+                    ].get(cat_name, 0) + abs(amt)
+
+        # Create links: Budgets → Categories using real mapped amounts
+        for budget_name, cat_map in budget_category_map.items():
+            if budget_name not in budget_indices:
+                continue
+            for cat_name, amt in cat_map.items():
+                if cat_name in category_indices and amt > 0:
+                    sankeyLinks.append(
+                        {
+                            "source": budget_indices[budget_name],
+                            "target": category_indices[cat_name],
+                            "value": amt,
+                        }
+                    )
+
+        # Add savings flow from income hub
+        if savings_index is not None:
+            sankeyLinks.append(
+                {
+                    "source": income_hub_index,
+                    "target": savings_index,
+                    "value": float(netChangeThisMonth),
+                }
+            )
+
+        # Convert to JSON for JavaScript
+        import json
+
+        sankeyData = json.dumps({"nodes": sankeyNodes, "links": sankeyLinks})
+        #
         # Assemble the email
         print("Composing email...")
         msg = EmailMessage()
@@ -546,6 +744,10 @@ def main():
 					.total-row .amount {{
 						color: white !important;
 					}}
+					canvas {{
+						max-width: 100%;
+						height: auto !important;
+					}}
 					.footer {{
 						text-align: center;
 						margin-top: 30px;
@@ -594,14 +796,90 @@ def main():
 					<h3>🏷️ Category Summary</h3>
 					{categoriesTableBody}
 				</div>
+				<div class="section">
+					<h3>💸 Money Flow</h3>
+					<div style="position: relative; height: 500px;">
+						<canvas id="sankeyChart"></canvas>
+					</div>
+				</div>
 				{budgetSection}
 				<div class="section">
 					<h3>📈 Financial Overview</h3>
 					{generalTableBody}
 				</div>
 				<div class="footer">
-					Generated by Firefly III Email Summary
+					Generated by <a href="https://github.com/yemzikk/firefly-iii-email-summary" style="color: #999;">Firefly III Email Summary</a> • <a href="https://yemzikk.in" style="color: #999; text-decoration: none;">Yemzikk</a>
 				</div>
+				<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+				<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.12.0/dist/chartjs-chart-sankey.min.js"></script>
+				<script>
+					const sankeyData = {sankeyData};
+					const ctx = document.getElementById('sankeyChart');
+					
+					// Transform data for Chart.js Sankey
+					const data = {{
+						datasets: [{{
+							data: sankeyData.links.map(link => ({{
+								from: sankeyData.nodes[link.source].label,
+								to: sankeyData.nodes[link.target].label,
+								flow: link.value
+							}})),
+							colorFrom: (c) => {{
+								const fromLabel = c.dataset.data[c.dataIndex].from;
+								const toLabel = c.dataset.data[c.dataIndex].to;
+								// Revenue accounts (Level 1 - dark green)
+								if (toLabel !== 'Total Income' && fromLabel !== 'Total Income') return 'rgba(27, 94, 32, 0.7)';
+								// Income categories (Level 2 - light green)
+								if (toLabel === 'Total Income') return 'rgba(76, 175, 80, 0.7)';
+								// Income hub (Level 3 - blue)
+								if (fromLabel === 'Total Income') return 'rgba(102, 126, 234, 0.7)';
+								// Budgets (Level 4 - purple)
+								return 'rgba(156, 39, 176, 0.7)';
+							}},
+							colorTo: (c) => {{
+								const toLabel = c.dataset.data[c.dataIndex].to;
+								const fromLabel = c.dataset.data[c.dataIndex].from;
+								// Surplus Savings (green)
+								if (toLabel === 'Savings' || toLabel === 'Net Savings') return 'rgba(40, 167, 69, 0.7)';
+								// Income categories (light green)
+								if (toLabel !== 'Total Income' && fromLabel !== 'Total Income') return 'rgba(76, 175, 80, 0.7)';
+								// Income hub (blue)
+								if (toLabel === 'Total Income') return 'rgba(102, 126, 234, 0.7)';
+								// Budgets (purple)
+								if (fromLabel === 'Total Income' && toLabel !== 'Savings' && toLabel !== 'Net Savings') return 'rgba(156, 39, 176, 0.7)';
+								// Categories (red)
+								return 'rgba(220, 53, 69, 0.7)';
+							}},
+							borderWidth: 0,
+							nodeWidth: 10,
+							size: 'max'
+						}}]
+					}};
+					
+					new Chart(ctx, {{
+						type: 'sankey',
+						data: data,
+						options: {{
+							responsive: true,
+							maintainAspectRatio: false,
+							plugins: {{
+								legend: {{
+									display: false
+								}},
+								tooltip: {{
+									callbacks: {{
+										label: function(context) {{
+											const item = context.dataset.data[context.dataIndex];
+											const totalIncome = {totalIncome};
+											const percentage = ((item.flow / totalIncome) * 100).toFixed(1);
+											return item.from + ' → ' + item.to + ': {currencySymbol}' + Math.round(item.flow).toLocaleString() + ' (' + percentage + '%)';
+										}}
+									}}
+								}}
+							}}
+						}}
+					}});
+				</script>
 			</body>
 		</html>
 		""".format(
@@ -610,6 +888,9 @@ def main():
             categoriesTableBody=categoriesTableBody,
             budgetSection=budgetSection,
             generalTableBody=generalTableBody,
+            sankeyData=sankeyData,
+            currencySymbol=currencySymbol,
+            totalIncome=earnedThisMonth,
         )
         msg.set_content(
             bs4.BeautifulSoup(htmlBody, "html.parser").get_text()
