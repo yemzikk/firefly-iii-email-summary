@@ -305,6 +305,12 @@ Based on [David Schlachter’s firefly-iii-email-summary](https://github.com/dav
 - [Firefly III Documentation](https://docs.firefly-iii.org/)
 - [Firefly III GitHub](https://github.com/firefly-iii/firefly-iii)
 
+## Related Project: Firedash
+
+**Firedash** is an interactive dashboard designed to complement Firefly III. It focuses on monthly reporting, helping you visualize spending habits, track category usage, and review financial health through a clean, responsive interface.
+
+Explore it here: https://firedash.yemzikk.in/
+
 ## Contributing
 
 Contributions welcome! Feel free to:
